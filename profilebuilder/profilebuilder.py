@@ -61,20 +61,11 @@ class Profile:
     >>> p.append(slope='-1:3', z2=0.)
     >>> p.plot()
 
-    Notes
-    -----
-    Geometry solver is not finalized. The first segment should be
-    determined in terms of geometry and position otherwise an error is
-    raised. The algorithm should find a fully determined segment and
-    work both ways from there.
-
     '''
 
     
     def __init__(self):
 
-        self.x0 = None
-        self.z0 = None
         self.segments = []
 
 
@@ -128,68 +119,74 @@ class Profile:
 
         
     def get_geometry(self):
-        x = [0]
-        z = [0]
+
+        n = len(self.segments)
+        x = [None] * (n+1)
+        z = [None] * (n+1)
+        dx = [None] * n
+        dz = [None] * n
+
+        # collect known positions
         for i, segment in enumerate(self.segments):
-            logger.debug('Positioning section #%d...' % (i+1))
-            dx, dz = segment.get_geometry(x1=x[i], z1=z[i])
-            if dx is not None and dz is not None:
-                x.append(x[i] + dx)
-                z.append(z[i] + dz)
-                logger.debug('Current profile coordinates: %s.' % str(list(zip(x, z))))
+            if segment.x1 is not None:
+                if x[i] is None:
+                    x[i] = segment.x1
+                elif x[i] != segment.x1:
+                    raise ValueError('Geometry overdetermined in x-direction: '
+                                     '%0.2f and %0.2f.' % (x[i], segment.x1))
+            if segment.x2 is not None:
+                if x[i+1] is None:
+                    x[i+1] = segment.x2
+                elif x[i+1] != segment.x2:
+                    raise ValueError('Geometry overdetermined in x-direction: '
+                                     '%0.2f and %0.2f.' % (x[i+1], segment.x2))
+            if segment.z1 is not None:
+                if z[i] is None:
+                    z[i] = segment.z1
+                elif z[i] != segment.z1:
+                    raise ValueError('Geometry overdetermined in z-direction: '
+                                     '%0.2f and %0.2f.' % (z[i], segment.z1))
+            if segment.z2 is not None:
+                if z[i+1] is None:
+                    z[i+1] = segment.z2
+                elif z[i+1] != segment.z2:
+                    raise ValueError('Geometry overdetermined in x-direction: '
+                                     '%0.2f and %0.2f.' % (z[i+1], segment.z2))
             
-                if segment.x1 is not None:
-                    self.set_reference_position(x=segment.x1-x[i])
-                if segment.x2 is not None:
-                    self.set_reference_position(x=segment.x2-x[i+1])
-                if segment.z1 is not None:
-                    self.set_reference_position(z=segment.z1-z[i])
-                if segment.z2 is not None:
-                    self.set_reference_position(z=segment.z2-z[i+1])
-                logger.debug('Current origin: %s.' % str((self.x0, self.z0)))
-            else:
-                x.append(None)
-                z.append(None)
-                raise ValueError('Geometry underdetermined.')
+            dx[i], dz[i] = segment.get_geometry()
 
-        # reverse sweep
-        # for i in range(len(self.segments))[:-1:-1]:
-        #     segment = self.segments[i]
-        #     if x[i+1] is None or z[i+1] is None:
-        #         logger.debug('Positioning section #%d...' % (i+1))
-        #         dx, dz = segment.get_geometry(x2=x[i+2], z2=z[i+2])
-        #         if dx is not None and dz is not None:
-        #             x[i+1] = x[i+2] - dx
-        #             z[i+1] = z[i+2] - dz
-        #             logger.debug('Current profile coordinates: %s.' % str(list(zip(x, z))))
-        #         else:
-        #             raise ValueError('Geometry underdetermined.')
+        # assume origin if underdetermined
+        if all([xi is None for xi in x]):
+            x[0] = 0.
+        if all([zi is None for zi in z]):
+            z[0] = 0.
 
-        x = np.asarray(x)
-        z = np.asarray(z)
+        # forward sweep
+        for i in range(n):
+            if x[i+1] is None and x[i] is not None and dx[i] is not None:
+                x[i+1] = x[i] + dx[i]
+            if z[i+1] is None and z[i] is not None and dz[i] is not None:
+                z[i+1] = z[i] + dz[i]
+            if i < n-1 and (dx[i+1] is None or dz[i+1] is None):
+                geom = self.segments[i+1].get_geometry(x1=x[i+1], z1=z[i+1])
+                if dx[i+1] is None:
+                    dx[i+1] = geom[0]
+                if dz[i+1] is None:
+                    dz[i+1] = geom[1]
+
+        # backward sweep
+        for i in range(n-1, -1, -1):
+            if x[i-1] is None and x[i] is not None and dx[i-1] is not None:
+                x[i-1] = x[i] - dx[i-1]
+            if z[i-1] is None and z[i] is not None and dz[i-1] is not None:
+                z[i-1] = z[i] - dz[i-1]
         
-        if self.x0 is not None:
-            x += self.x0
-        if self.z0 is not None:
-            z += self.z0
+        if any([xi is None for xi in x]) or any([zi is None for zi in z]):
+            logger.debug('Current profile coordinates: %s' % list(zip(x,z)))
+            logger.debug('Current section geometries: %s' % list(zip(dx,dz)))
+            raise ValueError('Geometry underdetermined.')
                 
         return x, z
-
-
-    def set_reference_position(self, x=None, z=None):
-        if x is not None:
-            if self.x0 is None:
-                self.x0 = x
-            elif self.x0 != x:
-                raise ValueError('Position overdetermined in x-direction: '
-                                 'x=%0.2f and x=%0.2f.' % (self.x0, x))
-
-        if z is not None:
-            if self.z0 is None:
-                self.z0 = z
-            elif self.z0 != z:
-                raise ValueError('Position overdetermined in z-direction: '
-                                 'z=%0.2f and z=%0.2f.' % (self.z0, z))
 
 
     def to_json(self, **kwargs):
