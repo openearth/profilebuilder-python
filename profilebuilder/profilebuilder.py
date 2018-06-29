@@ -2,7 +2,11 @@ import six
 import json
 import logging
 import numpy as np
-import matplotlib.pyplot as plt
+#try:
+#    import matplotlib.pyplot as plt
+#    HAS_MATPLOTLIB = True
+#except ImportError:
+#    HAS_MATPLOTLIB = False
 
 
 # initialize logger
@@ -30,7 +34,7 @@ def to_radians(angle, force_degrees=False):
 
     '''
 
-    if isinstance(angle, six.string_types+(six.text_type,)):
+    if isinstance(angle, six.string_types+(six.text_type, str)):
         if ':' in angle:
             dy, dx = angle.split(':')
             return np.arctan2(float(dy), float(dx))
@@ -78,7 +82,7 @@ class Profile:
 
     
     def __iter__(self):
-        for segment in segments:
+        for segment in self.segments:
             yield segment
 
 
@@ -193,15 +197,16 @@ class Profile:
         return json.dumps([dict(s) for s in self.segments], **kwargs).replace(' ','')
 
     
-    def plot(self, ax=None, **kwargs):
-        
-        if ax is None:
-            fig, ax = plt.subplots()
-        else:
-            fig = ax.get_figure()
-        x, z = self.get_geometry()
-        ax.plot(x, z, **kwargs)
-        return fig, ax
+#    def plot(self, ax=None, **kwargs):
+#        if not HAS_MATPLOTLIB:
+#            raise ImportError('Matplotlib not available.')
+#        if ax is None:
+#            fig, ax = plt.subplots()
+#        else:
+#            fig = ax.get_figure()
+#        x, z = self.get_geometry()
+#        ax.plot(x, z, **kwargs)
+#        return fig, ax
 
     
     @staticmethod
@@ -249,7 +254,7 @@ class ProfileSegment:
         s = ''
         s += 'ProfileSegment:\n'
         for k, v in dict(self).items():
-            if isinstance(v, six.string_types+(six.text_type,)):
+            if isinstance(v, six.string_types+(six.text_type, str)):
                 s += '  %s = %s\n' % (k, v)
             else:
                 s += '  %s = %0.2f\n' % (k, v)
